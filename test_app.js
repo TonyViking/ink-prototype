@@ -61,10 +61,15 @@ const swatches = swatchIds.map(c => fakeEl({ dataset: { color: c } }));
 const els = {
   board: canvas,
   info: fakeEl(),
-  erase: fakeEl({ _aria: false }),
+  erase: fakeEl(),
+  link: fakeEl(),
   undo: fakeEl(),
   clear: fakeEl(),
-  diag: fakeEl()
+  diag: fakeEl(),
+  back: fakeEl({ hidden: true }),
+  editTools: fakeEl(),
+  modeEdit: fakeEl(),
+  modeView: fakeEl()
 };
 
 const documentStub = {

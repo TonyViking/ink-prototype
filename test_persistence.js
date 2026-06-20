@@ -36,8 +36,9 @@ function makeInstance() {
     setPointerCapture() {}, releasePointerCapture() {}
   });
   const swatches = ["cream", "white", "blue", "pink"].map(c => recordingEl({ dataset: { color: c } }));
-  const els = { board: canvas, info: recordingEl(), erase: recordingEl(),
-    undo: recordingEl(), clear: recordingEl(), diag: recordingEl() };
+  const els = { board: canvas, info: recordingEl(), erase: recordingEl(), link: recordingEl(),
+    undo: recordingEl(), clear: recordingEl(), diag: recordingEl(), back: recordingEl({ hidden: true }),
+    editTools: recordingEl(), modeEdit: recordingEl(), modeView: recordingEl() };
 
   const win = {
     devicePixelRatio: 2, innerWidth: 800, innerHeight: 1200, isSecureContext: false,

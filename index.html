@@ -12,7 +12,6 @@
 <title>Ink Prototype</title>
 <style>
   :root {
-    /* These mirror CONFIG.colors in the script. Change both if you re-theme. */
     --bg: #000000;
     --cream: #F2E2C4;
     --white: #FFFFFF;
@@ -29,27 +28,33 @@
     overscroll-behavior: none; touch-action: none;
     font-family: -apple-system, "Segoe UI", Roboto, system-ui, sans-serif;
   }
-  #board {
-    position: fixed; inset: 0; display: block;
-    touch-action: none; cursor: crosshair;
-  }
+  #board { position: fixed; inset: 0; display: block; touch-action: none; cursor: crosshair; }
 
-  /* Bottom toolbar — kept quiet so the surface is the hero */
+  /* Back — appears on child pages, in both modes */
+  #back {
+    position: fixed; top: max(10px, env(safe-area-inset-top)); left: 10px; z-index: 10;
+    width: 40px; height: 40px; border-radius: 50%;
+    background: var(--ui-surface); border: 1px solid var(--ui-stroke);
+    color: #fff; font-size: 24px; line-height: 1; padding: 0 0 3px 0;
+    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  }
+  #back[hidden] { display: none; }
+  #back:active { transform: scale(0.94); }
+
+  /* Bottom toolbar */
   #bar {
     position: fixed; left: 50%; bottom: max(14px, env(safe-area-inset-bottom));
     transform: translateX(-50%);
     display: flex; align-items: center; gap: 10px;
-    padding: 8px 10px;
-    background: var(--ui-surface);
-    border: 1px solid var(--ui-stroke);
-    border-radius: 16px;
-    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+    padding: 8px 10px; max-width: calc(100vw - 20px);
+    background: var(--ui-surface); border: 1px solid var(--ui-stroke);
+    border-radius: 16px; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
     z-index: 10;
   }
+  .group { display: flex; align-items: center; gap: 10px; }
   .swatch {
     width: 34px; height: 34px; border-radius: 50%;
-    border: 2px solid rgba(255,255,255,0.18);
-    padding: 0; outline: none; position: relative;
+    border: 2px solid rgba(255,255,255,0.18); padding: 0; outline: none;
     transition: transform .08s ease;
   }
   .swatch:active { transform: scale(0.92); }
@@ -57,24 +62,24 @@
     border-color: rgba(255,255,255,0.95);
     box-shadow: 0 0 0 2px rgba(0,0,0,0.6), 0 0 10px rgba(255,255,255,0.25);
   }
-  .sep { width: 1px; height: 26px; background: var(--ui-stroke); margin: 0 2px; }
+  .sep { width: 1px; height: 26px; background: var(--ui-stroke); margin: 0 2px; flex: 0 0 auto; }
   .tool {
     height: 34px; min-width: 34px; padding: 0 10px;
     display: flex; align-items: center; justify-content: center;
     background: transparent; color: var(--ui-text);
     border: 1px solid var(--ui-stroke); border-radius: 11px;
-    font-size: 13px; font-weight: 600; letter-spacing: .01em;
+    font-size: 13px; font-weight: 600;
   }
   .tool:active { transform: scale(0.94); }
-  .tool[aria-pressed="true"] {
-    color: #fff; border-color: rgba(255,255,255,0.85);
-    background: rgba(255,255,255,0.07);
-  }
+  .tool[aria-pressed="true"] { color: #fff; border-color: rgba(255,255,255,0.85); background: rgba(255,255,255,0.07); }
   .tool svg { width: 18px; height: 18px; }
 
-  /* Debug readout — confirms the S Pen is seen and pressure is arriving */
+  .seg { display: flex; border: 1px solid var(--ui-stroke); border-radius: 11px; overflow: hidden; flex: 0 0 auto; }
+  .segbtn { height: 34px; padding: 0 13px; background: transparent; color: var(--ui-text); border: 0; font-size: 13px; font-weight: 600; }
+  .segbtn[aria-pressed="true"] { background: rgba(255,255,255,0.10); color: #fff; }
+
   #info {
-    position: fixed; top: max(10px, env(safe-area-inset-top)); left: 10px;
+    position: fixed; top: max(10px, env(safe-area-inset-top)); right: 10px;
     background: var(--ui-surface); border: 1px solid var(--ui-stroke);
     border-radius: 10px; padding: 8px 10px; z-index: 10;
     color: var(--ui-text); font-size: 12px; line-height: 1.5;
@@ -86,31 +91,41 @@
 </head>
 <body>
   <canvas id="board"></canvas>
-
+  <button id="back" aria-label="Back" hidden>&#8249;</button>
   <div id="info" aria-hidden="true"></div>
 
-  <div id="bar" role="toolbar" aria-label="Drawing tools">
-    <button class="swatch" data-color="cream" style="background:var(--cream)" aria-label="Header (cream)"  aria-pressed="false"></button>
-    <button class="swatch" data-color="white" style="background:var(--white)" aria-label="Script (white)" aria-pressed="false"></button>
-    <button class="swatch" data-color="blue"  style="background:var(--blue)"  aria-label="Link (blue)"   aria-pressed="false"></button>
-    <button class="swatch" data-color="pink"  style="background:var(--pink)"  aria-label="Border (pink)" aria-pressed="false"></button>
-    <span class="sep"></span>
-    <button class="tool" id="erase" aria-label="Eraser" aria-pressed="false" title="Eraser">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3 21 8 11 18H6l-3-3z"/><path d="M14 5 19 10"/></svg>
-    </button>
-    <button class="tool" id="undo" aria-label="Undo" title="Undo">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-1"/></svg>
-    </button>
-    <button class="tool" id="clear" aria-label="Clear page" title="Clear">Clear</button>
-    <button class="tool" id="diag" aria-label="Toggle diagnostics" aria-pressed="false" title="Diagnostics">i</button>
+  <div id="bar" role="toolbar" aria-label="Tools">
+    <span id="editTools" class="group">
+      <button class="swatch" data-color="cream" style="background:var(--cream)" aria-label="Header (cream)" aria-pressed="false"></button>
+      <button class="swatch" data-color="white" style="background:var(--white)" aria-label="Script (white)" aria-pressed="false"></button>
+      <button class="swatch" data-color="blue"  style="background:var(--blue)"  aria-label="Link (blue)"   aria-pressed="false"></button>
+      <button class="swatch" data-color="pink"  style="background:var(--pink)"  aria-label="Border (pink)" aria-pressed="false"></button>
+      <span class="sep"></span>
+      <button class="tool" id="erase" aria-label="Eraser" aria-pressed="false" title="Eraser">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3 21 8 11 18H6l-3-3z"/><path d="M14 5 19 10"/></svg>
+      </button>
+      <button class="tool" id="link" aria-label="Link" aria-pressed="false" title="Link (drag a box; tap a box to remove)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg>
+      </button>
+      <button class="tool" id="undo" aria-label="Undo" title="Undo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-1"/></svg>
+      </button>
+      <button class="tool" id="clear" aria-label="Clear page" title="Clear">Clear</button>
+      <span class="sep"></span>
+    </span>
+    <span class="seg">
+      <button class="segbtn" id="modeEdit" aria-pressed="true">Edit</button>
+      <button class="segbtn" id="modeView" aria-pressed="false">View</button>
+    </span>
+    <button class="tool" id="diag" aria-label="Diagnostics" aria-pressed="false" title="Diagnostics">i</button>
   </div>
 
 <script>
 "use strict";
 (function () {
-  // ---------------------------------------------------------------------------
-  // CONFIG — single source of truth. Re-theme or retune here.
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
+  // CONFIG — single source of truth.
+  // ===========================================================================
   const CONFIG = {
     background: "#000000",
     colors: [
@@ -119,152 +134,257 @@
       { id: "blue",  label: "Link",   value: "#4FA3FF" },
       { id: "pink",  label: "Border", value: "#FF77B0" }
     ],
-    defaultColorId: "cream",          // first marks default to a header
-    pen: {
-      minWidth: 1.6,                  // px at pressure 0
-      maxWidth: 5.4,                  // px at pressure 1
-      defaultPressure: 0.5,           // used when a device reports no pressure
-      maxDpr: 3                       // cap backing-store scale to bound memory
-    },
-    eraser: { radius: 15 },           // px hit radius for stroke-erase
-    page: {
-      initialScreens: 2.5,            // starting virtual height, in screens
-      growBuffer: 700                 // headroom added below your lowest mark
-    },
-    scroll: { overscroll: 240 },      // px you can pull past the bottom to write below
-    storage: { dbName: "inkpad", debounceMs: 600 }  // IndexedDB autosave
+    defaultColorId: "cream",
+    pen: { minWidth: 1.6, maxWidth: 5.4, defaultPressure: 0.5, maxDpr: 3 },
+    eraser: { radius: 15 },
+    page: { initialScreens: 2.5, growBuffer: 700 },
+    scroll: { overscroll: 240 },
+    storage: { dbName: "inkpad", debounceMs: 600 },
+    link: {
+      minSize: 22,                       // ignore boxes smaller than this (treat as a tap)
+      tapSlop: 8,                        // px of finger travel before a view tap counts as a scroll
+      cornerRadius: 8,
+      editStroke: "#4FA3FF",             // dashed link outline while editing (blue = link)
+      viewFill: "rgba(79,163,255,0.10)", // faint tint so links read as tappable in view
+      viewStroke: "rgba(79,163,255,0.55)",
+      dividerColor: "#FF77B0",           // pink rule under a pulled header (pink = border)
+      header: { marginX: 26, marginTop: 26, padBelow: 16 }
+    }
   };
 
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
   // State
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
   const canvas = document.getElementById("board");
   const ctx = canvas.getContext("2d");
 
   let dpr = 1, viewW = 0, viewH = 0;
-  let cameraY = 0;            // page-coord at top of viewport
-  let pageHeight = 0;         // current virtual page height (page coords)
-  let strokes = [];          // { color, pts:[{x,y,p}], minY, maxY }
-  let current = null;        // in-progress stroke
+  let cameraY = 0, pageHeight = 0;
+
+  // Page graph. Each page: { id, parentId, strokes[], pageHeight, links[], header|null }
+  // header: { strokes[], dividerY }   (a read-only snapshot pulled from a link box)
+  let pages = {};
+  let currentId = "root";
+  const cameraByPage = {};               // transient: remembers scroll position per page
+
+  // Live mirrors of the current page (strokes & links are the SAME array refs as
+  // pages[currentId], so edits sync automatically; pageHeight is copied back on save).
+  let strokes = [];
+  let links = [];
+  let headerInfo = null;
 
   let color = colorById(CONFIG.defaultColorId).value;
-  let tool = "draw";         // "draw" | "erase"
+  let mode = "edit";                     // "edit" | "view"
+  let tool = "draw";                     // "draw" | "erase" | "link"
 
-  let drawId = null;         // active drawing pointer id (pen/mouse)
-  let scrollId = null;       // active scrolling pointer id (one finger)
-  let lastScrollClientY = 0;
+  let current = null;                    // in-progress stroke
+  let linkDrag = null;                   // { x0,y0,x1,y1 } while dragging a link box
+  let drawId = null, scrollId = null, lastScrollClientY = 0;
+  let viewId = null, viewMoved = false, viewStartPt = null, viewStartClientY = 0, viewLastClientY = 0;
 
   const diag = { on: false, type: "-", pressure: 0,
     coalesced: (typeof PointerEvent !== "undefined") && ("getCoalescedEvents" in PointerEvent.prototype) };
 
   function colorById(id) { return CONFIG.colors.find(c => c.id === id) || CONFIG.colors[0]; }
+  function makeId(p) { return p + "_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
 
-  // ---------------------------------------------------------------------------
-  // Sizing (high-DPI aware)
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
+  // Sizing
+  // ===========================================================================
   function resize() {
     dpr = Math.min(window.devicePixelRatio || 1, CONFIG.pen.maxDpr);
-    viewW = window.innerWidth;
-    viewH = window.innerHeight;
-    canvas.style.width = viewW + "px";
-    canvas.style.height = viewH + "px";
-    canvas.width = Math.round(viewW * dpr);
-    canvas.height = Math.round(viewH * dpr);
-    ensurePageHeight();
-    clampCamera();
-    render();
+    viewW = window.innerWidth; viewH = window.innerHeight;
+    canvas.style.width = viewW + "px"; canvas.style.height = viewH + "px";
+    canvas.width = Math.round(viewW * dpr); canvas.height = Math.round(viewH * dpr);
+    ensurePageHeight(); clampCamera(); render();
   }
-
   function ensurePageHeight() {
     const min = viewH * CONFIG.page.initialScreens;
     if (pageHeight < min) pageHeight = min;
   }
-
   function growPage(maxY) {
     const want = maxY + CONFIG.page.growBuffer;
     if (want > pageHeight) pageHeight = want;
   }
 
-  // ---------------------------------------------------------------------------
-  // Coordinate + width helpers
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
+  // Coordinates / width
+  // ===========================================================================
   function pagePt(e) {
     const r = canvas.getBoundingClientRect();
     return { x: e.clientX - r.left, y: (e.clientY - r.top) + cameraY };
   }
-
   function widthFor(p) {
     const pr = (p && p > 0) ? p : CONFIG.pen.defaultPressure;
     return CONFIG.pen.minWidth + pr * (CONFIG.pen.maxWidth - CONFIG.pen.minWidth);
   }
-
-  // ---------------------------------------------------------------------------
-  // Rendering — one screen-sized canvas, camera over vector data
-  // ---------------------------------------------------------------------------
-  function setPageTransform() {
-    // page coords -> device px, scaled by dpr and shifted by camera
-    ctx.setTransform(dpr, 0, 0, dpr, 0, -cameraY * dpr);
-    ctx.lineCap = "round";
-    ctx.lineJoin = "round";
+  function recomputeBbox(s) {
+    let mn = Infinity, mx = -Infinity;
+    for (let i = 0; i < s.pts.length; i++) {
+      const y = s.pts[i].y; if (y < mn) mn = y; if (y > mx) mx = y;
+    }
+    s.minY = isFinite(mn) ? mn : 0; s.maxY = isFinite(mx) ? mx : 0;
   }
 
+  // ===========================================================================
+  // Page graph
+  // ===========================================================================
+  function newPage(id, parentId, header) {
+    return { id: id, parentId: parentId || null, strokes: [], pageHeight: 0, links: [], header: header || null };
+  }
+  function bindCurrent() {
+    const pg = pages[currentId];
+    strokes = pg.strokes; links = pg.links;
+    pageHeight = pg.pageHeight || 0; ensurePageHeight();
+    headerInfo = pg.header || null;
+  }
+  function commitCurrent() { if (pages[currentId]) pages[currentId].pageHeight = pageHeight; }
+
+  function navigateTo(id) {
+    if (!pages[id] || id === currentId) return;
+    commitCurrent();
+    cameraByPage[currentId] = cameraY;
+    currentId = id;
+    bindCurrent();
+    cameraY = cameraByPage[id] || 0; clampCamera();
+    cancelGestures();
+    updateChrome(); scheduleSave(); render();
+  }
+  function goBack() {
+    const pg = pages[currentId];
+    if (pg && pg.parentId && pages[pg.parentId]) navigateTo(pg.parentId);
+  }
+
+  function snapshotInto(rect) {
+    const HMx = CONFIG.link.header.marginX, HMt = CONFIG.link.header.marginTop;
+    const out = []; let maxY = HMt;
+    for (let i = 0; i < strokes.length; i++) {
+      const s = strokes[i]; let inside = false;
+      for (let j = 0; j < s.pts.length; j++) {
+        const p = s.pts[j];
+        if (p.x >= rect.x && p.x <= rect.x + rect.w && p.y >= rect.y && p.y <= rect.y + rect.h) { inside = true; break; }
+      }
+      if (!inside) continue;
+      const pts = s.pts.map(p => ({ x: p.x - rect.x + HMx, y: p.y - rect.y + HMt, p: p.p }));
+      const cp = { color: s.color, pts: pts }; recomputeBbox(cp);
+      if (cp.maxY > maxY) maxY = cp.maxY;
+      out.push(cp);
+    }
+    return { strokes: out, dividerY: maxY + CONFIG.link.header.padBelow };
+  }
+
+  function createLink(rect) {
+    const snap = snapshotInto(rect);
+    const childId = makeId("p");
+    pages[childId] = newPage(childId, currentId, { strokes: snap.strokes, dividerY: snap.dividerY });
+    links.push({ id: makeId("l"), rect: rect, targetId: childId });
+    commitCurrent(); scheduleSave(); render();
+  }
+  function linkAt(pt) {
+    for (let i = links.length - 1; i >= 0; i--) {
+      const r = links[i].rect;
+      if (pt.x >= r.x && pt.x <= r.x + r.w && pt.y >= r.y && pt.y <= r.y + r.h) return links[i];
+    }
+    return null;
+  }
+  function removeLink(lk) {
+    const i = links.indexOf(lk);
+    if (i >= 0) { links.splice(i, 1); scheduleSave(); render(); }
+    // Note: the child page data is left in place (unreachable). Cascade-delete is
+    // deliberately out of scope for this build.
+  }
+
+  // ===========================================================================
+  // Rendering
+  // ===========================================================================
+  function setPageTransform() {
+    ctx.setTransform(dpr, 0, 0, dpr, 0, -cameraY * dpr);
+    ctx.lineCap = "round"; ctx.lineJoin = "round";
+  }
   function render() {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.fillStyle = CONFIG.background;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     setPageTransform();
+    drawLinks();                         // under the ink so highlights sit behind handwriting
     const top = cameraY, bot = cameraY + viewH;
     for (let i = 0; i < strokes.length; i++) {
       const s = strokes[i];
-      if (s.maxY < top || s.minY > bot) continue;   // cull off-screen
+      if (s.maxY < top || s.minY > bot) continue;
       drawStroke(s, 1);
     }
     if (current) drawStroke(current, 1);
+    drawHeader();
+    if (linkDrag) drawLinkPreview();
 
     drawScrollbar();
     if (diag.on) updateInfo();
   }
 
-  // Draw a stroke from segment index `from` onward (1 = whole stroke).
   function drawStroke(s, from) {
-    const pts = s.pts;
-    if (!pts.length) return;
+    const pts = s.pts; if (!pts.length) return;
     ctx.strokeStyle = s.color;
     if (pts.length === 1) {
       const w = widthFor(pts[0].p);
       ctx.fillStyle = s.color;
-      ctx.beginPath();
-      ctx.arc(pts[0].x, pts[0].y, w / 2, 0, Math.PI * 2);
-      ctx.fill();
+      ctx.beginPath(); ctx.arc(pts[0].x, pts[0].y, w / 2, 0, Math.PI * 2); ctx.fill();
       return;
     }
     const start = Math.max(1, from);
     for (let i = start; i < pts.length; i++) {
       const a = pts[i - 1], b = pts[i];
       ctx.lineWidth = widthFor((a.p + b.p) / 2);
-      ctx.beginPath();
-      ctx.moveTo(a.x, a.y);
-      ctx.lineTo(b.x, b.y);
-      ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
     }
+  }
+
+  function drawHeader() {
+    if (!headerInfo) return;
+    const hs = headerInfo.strokes || [], dy = headerInfo.dividerY || 0;
+    if (cameraY > dy) return;            // header sits at the very top; skip when scrolled past
+    ctx.save();
+    ctx.beginPath(); ctx.rect(0, 0, viewW, dy); ctx.clip();
+    for (let i = 0; i < hs.length; i++) drawStroke(hs[i], 1);
+    ctx.restore();
+    ctx.strokeStyle = CONFIG.link.dividerColor; ctx.lineWidth = 2; ctx.setLineDash([]);
+    ctx.beginPath(); ctx.moveTo(10, dy); ctx.lineTo(viewW - 10, dy); ctx.stroke();
+  }
+
+  function drawLinks() {
+    if (!links.length) return;
+    const top = cameraY, bot = cameraY + viewH, R = CONFIG.link.cornerRadius;
+    for (let i = 0; i < links.length; i++) {
+      const r = links[i].rect;
+      if (r.y + r.h < top || r.y > bot) continue;
+      if (mode === "edit") {
+        ctx.setLineDash([8, 6]); ctx.lineWidth = 2; ctx.strokeStyle = CONFIG.link.editStroke;
+        roundRect(r.x, r.y, r.w, r.h, R); ctx.stroke(); ctx.setLineDash([]);
+      } else {
+        ctx.fillStyle = CONFIG.link.viewFill; roundRect(r.x, r.y, r.w, r.h, R); ctx.fill();
+        ctx.lineWidth = 2; ctx.strokeStyle = CONFIG.link.viewStroke; roundRect(r.x, r.y, r.w, r.h, R); ctx.stroke();
+      }
+    }
+  }
+
+  function drawLinkPreview() {
+    const r = normRect(linkDrag);
+    ctx.setLineDash([8, 6]); ctx.lineWidth = 2; ctx.strokeStyle = CONFIG.link.editStroke;
+    roundRect(r.x, r.y, r.w, r.h, CONFIG.link.cornerRadius); ctx.stroke(); ctx.setLineDash([]);
   }
 
   function drawScrollbar() {
     if (pageHeight <= viewH) return;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
-    const total = Math.max(pageHeight, viewH);
-    const trackH = canvas.height;
+    const total = Math.max(pageHeight, viewH), trackH = canvas.height;
     const thumbH = Math.max(34 * dpr, (viewH / total) * trackH);
     const thumbY = (cameraY / total) * trackH;
-    const x = canvas.width - 6 * dpr;
-    const w = 4 * dpr, r = 2 * dpr;
     ctx.fillStyle = "rgba(255,255,255,0.16)";
-    roundRect(x, Math.min(thumbY, trackH - thumbH), w, thumbH, r);
-    ctx.fill();
+    roundRect(canvas.width - 6 * dpr, Math.min(thumbY, trackH - thumbH), 4 * dpr, thumbH, 2 * dpr); ctx.fill();
   }
 
   function roundRect(x, y, w, h, r) {
+    r = Math.min(r, Math.abs(w) / 2, Math.abs(h) / 2);
     ctx.beginPath();
     ctx.moveTo(x + r, y);
     ctx.arcTo(x + w, y, x + w, y + h, r);
@@ -273,85 +393,82 @@
     ctx.arcTo(x, y, x + w, y, r);
     ctx.closePath();
   }
+  function normRect(d) {
+    const x = Math.min(d.x0, d.x1), y = Math.min(d.y0, d.y1);
+    return { x: x, y: y, w: Math.abs(d.x1 - d.x0), h: Math.abs(d.y1 - d.y0) };
+  }
 
-  // ---------------------------------------------------------------------------
-  // Camera / scrolling (one finger, vertical only)
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
+  // Camera / scroll
+  // ===========================================================================
   function clampCamera() {
     const maxY = Math.max(0, pageHeight - viewH) + CONFIG.scroll.overscroll;
     if (cameraY < 0) cameraY = 0;
     if (cameraY > maxY) cameraY = maxY;
   }
+  function scrollBy(dy) { cameraY -= dy; clampCamera(); render(); }
 
-  function scrollBy(dy) {
-    cameraY -= dy;
-    clampCamera();
-    render();
+  // ===========================================================================
+  // Edit-mode pointer (pen draws / erases / links; one finger scrolls)
+  // ===========================================================================
+  function startScroll(e) {
+    if (scrollId !== null) return;
+    scrollId = e.pointerId; lastScrollClientY = e.clientY; canvas.setPointerCapture(e.pointerId);
   }
-
-  // ---------------------------------------------------------------------------
-  // Drawing / erasing
-  // ---------------------------------------------------------------------------
-  function startDraw(e) {
-    canvas.setPointerCapture(e.pointerId);
-    drawId = e.pointerId;
+  function startEditPointer(e) {
+    canvas.setPointerCapture(e.pointerId); drawId = e.pointerId;
     diag.type = e.pointerType; diag.pressure = e.pressure;
-    if (tool === "erase") { current = null; eraseAt(pagePt(e)); return; }
     const p = pagePt(e);
+    if (tool === "erase") { current = null; eraseAt(p); return; }
+    if (tool === "link") { current = null; linkDrag = { x0: p.x, y0: p.y, x1: p.x, y1: p.y }; render(); return; }
     current = { color: color, pts: [{ x: p.x, y: p.y, p: e.pressure }], minY: p.y, maxY: p.y };
     if (diag.on) updateInfo();
   }
-
-  function extendDraw(e) {
+  function editMove(e) {
     const list = (e.getCoalescedEvents && e.getCoalescedEvents()) || [];
     const evs = list.length ? list : [e];
     diag.type = e.pointerType; diag.pressure = e.pressure;
-
-    if (tool === "erase") {
-      for (let i = 0; i < evs.length; i++) eraseAt(pagePt(evs[i]));
-      if (diag.on) updateInfo();
-      return;
-    }
+    if (tool === "erase") { for (let i = 0; i < evs.length; i++) eraseAt(pagePt(evs[i])); if (diag.on) updateInfo(); return; }
+    if (tool === "link") { if (linkDrag) { const p = pagePt(e); linkDrag.x1 = p.x; linkDrag.y1 = p.y; render(); } return; }
     if (!current) return;
-
-    const from = current.pts.length - 1;   // first new segment starts here
+    const from = current.pts.length - 1;
     for (let i = 0; i < evs.length; i++) {
       const p = pagePt(evs[i]);
       current.pts.push({ x: p.x, y: p.y, p: evs[i].pressure });
       if (p.y < current.minY) current.minY = p.y;
       if (p.y > current.maxY) current.maxY = p.y;
     }
-    // incremental: draw only the newly added tail on top of existing pixels
-    setPageTransform();
-    drawStroke(current, Math.max(1, from));
+    setPageTransform(); drawStroke(current, Math.max(1, from));
     if (diag.on) updateInfo();
   }
-
-  function endDraw(e) {
+  function endEditPointer(e) {
     try { canvas.releasePointerCapture(e.pointerId); } catch (_) {}
     drawId = null;
-    if (tool === "draw" && current && current.pts.length) {
-      strokes.push(current);
-      growPage(current.maxY);
-      scheduleSave();
+    if (tool === "link") {
+      if (linkDrag) {
+        const r = normRect(linkDrag);
+        if (r.w >= CONFIG.link.minSize && r.h >= CONFIG.link.minSize) createLink(r);
+        else { const hit = linkAt({ x: linkDrag.x1, y: linkDrag.y1 }); if (hit) removeLink(hit); }
+        linkDrag = null;
+      }
+      render(); return;
     }
-    current = null;
-    render();
+    if (tool === "draw" && current && current.pts.length) {
+      strokes.push(current); growPage(current.maxY); scheduleSave();
+    }
+    current = null; render();
   }
 
   function eraseAt(p) {
-    const r = CONFIG.eraser.radius;
-    let removed = false;
+    const r = CONFIG.eraser.radius; let removed = false;
     for (let i = strokes.length - 1; i >= 0; i--) {
       if (strokeHit(strokes[i], p.x, p.y, r)) { strokes.splice(i, 1); removed = true; }
     }
     if (removed) { scheduleSave(); render(); }
   }
-
   function strokeHit(s, x, y, r) {
-    if (y < s.minY - r || y > s.maxY + r) return false;   // quick vertical reject
-    const pts = s.pts;
-    const r2 = r * r;
+    if (y < s.minY - r || y > s.maxY + r) return false;
+    const pts = s.pts, r2 = r * r;
     for (let i = 0; i < pts.length; i++) {
       const dx = pts[i].x - x, dy = pts[i].y - y;
       if (dx * dx + dy * dy <= r2) return true;
@@ -359,227 +476,220 @@
     return false;
   }
 
-  // ---------------------------------------------------------------------------
-  // Pointer routing: pen/mouse draw, one finger scrolls
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
+  // View-mode pointer (pen or finger: drag scrolls, tap follows a link)
+  // ===========================================================================
+  function startView(e) {
+    if (viewId !== null) return;
+    viewId = e.pointerId; viewMoved = false;
+    viewStartPt = pagePt(e); viewStartClientY = e.clientY; viewLastClientY = e.clientY;
+    canvas.setPointerCapture(e.pointerId);
+  }
+  function moveView(e) {
+    if (e.pointerId !== viewId) return;
+    const dy = e.clientY - viewLastClientY; viewLastClientY = e.clientY;
+    if (Math.abs(e.clientY - viewStartClientY) > CONFIG.link.tapSlop) viewMoved = true;
+    scrollBy(dy);
+  }
+  function endView(e) {
+    if (e.pointerId !== viewId) return;
+    try { canvas.releasePointerCapture(e.pointerId); } catch (_) {}
+    const wasTap = !viewMoved, pt = viewStartPt;
+    viewId = null; viewStartPt = null;
+    if (wasTap && pt) { const hit = linkAt(pt); if (hit) navigateTo(hit.targetId); }
+  }
+
+  function cancelGestures() {
+    current = null; linkDrag = null; drawId = null; scrollId = null; viewId = null;
+  }
+
+  // ===========================================================================
+  // Pointer routing
+  // ===========================================================================
   canvas.addEventListener("pointerdown", function (e) {
-    if (e.pointerType === "touch") {
-      if (scrollId !== null) return;            // ignore extra fingers
-      scrollId = e.pointerId;
-      lastScrollClientY = e.clientY;
-      canvas.setPointerCapture(e.pointerId);
-      return;
-    }
-    if (drawId !== null) return;                 // already drawing
-    startDraw(e);
+    if (mode === "view") { startView(e); return; }
+    if (e.pointerType === "touch") { startScroll(e); return; }
+    if (drawId !== null) return;
+    startEditPointer(e);
   });
-
   canvas.addEventListener("pointermove", function (e) {
+    if (mode === "view") { moveView(e); return; }
     if (e.pointerId === scrollId) {
-      const dy = e.clientY - lastScrollClientY;
-      lastScrollClientY = e.clientY;
-      scrollBy(dy);
-      return;
+      const dy = e.clientY - lastScrollClientY; lastScrollClientY = e.clientY; scrollBy(dy); return;
     }
-    if (e.pointerId === drawId) extendDraw(e);
+    if (e.pointerId === drawId) editMove(e);
   });
-
   function pointerEnd(e) {
-    if (e.pointerId === scrollId) {
-      try { canvas.releasePointerCapture(e.pointerId); } catch (_) {}
-      scrollId = null;
-      return;
-    }
-    if (e.pointerId === drawId) endDraw(e);
+    if (mode === "view") { endView(e); return; }
+    if (e.pointerId === scrollId) { try { canvas.releasePointerCapture(e.pointerId); } catch (_) {} scrollId = null; return; }
+    if (e.pointerId === drawId) endEditPointer(e);
   }
   canvas.addEventListener("pointerup", pointerEnd);
   canvas.addEventListener("pointercancel", pointerEnd);
-
-  // Block stray browser gestures
   canvas.addEventListener("contextmenu", e => e.preventDefault());
   window.addEventListener("gesturestart", e => e.preventDefault());
   document.addEventListener("dblclick", e => e.preventDefault(), { passive: false });
 
-  // ---------------------------------------------------------------------------
-  // Toolbar
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
+  // Toolbar / chrome
+  // ===========================================================================
   const swatches = Array.from(document.querySelectorAll(".swatch"));
   const eraseBtn = document.getElementById("erase");
+  const linkBtn = document.getElementById("link");
+  const backBtn = document.getElementById("back");
+  const editToolsEl = document.getElementById("editTools");
+  const modeEditBtn = document.getElementById("modeEdit");
+  const modeViewBtn = document.getElementById("modeView");
 
   function refreshTools() {
-    swatches.forEach(b => {
-      const isActive = tool === "draw" && colorById(b.dataset.color).value === color;
-      b.setAttribute("aria-pressed", isActive ? "true" : "false");
-    });
+    swatches.forEach(b => b.setAttribute("aria-pressed",
+      (tool === "draw" && colorById(b.dataset.color).value === color) ? "true" : "false"));
     eraseBtn.setAttribute("aria-pressed", tool === "erase" ? "true" : "false");
+    linkBtn.setAttribute("aria-pressed", tool === "link" ? "true" : "false");
+  }
+  function updateChrome() {
+    const pg = pages[currentId];
+    backBtn.hidden = !(pg && pg.parentId);
+    editToolsEl.style.display = (mode === "edit") ? "" : "none";
+    modeEditBtn.setAttribute("aria-pressed", mode === "edit" ? "true" : "false");
+    modeViewBtn.setAttribute("aria-pressed", mode === "view" ? "true" : "false");
+  }
+  function setMode(m) {
+    if (mode === m) return;
+    cancelGestures(); mode = m; updateChrome(); render();
   }
 
-  swatches.forEach(b => b.addEventListener("click", () => {
-    color = colorById(b.dataset.color).value;
-    tool = "draw";
-    refreshTools();
-  }));
+  swatches.forEach(b => b.addEventListener("click", () => { color = colorById(b.dataset.color).value; tool = "draw"; refreshTools(); }));
+  eraseBtn.addEventListener("click", () => { tool = (tool === "erase") ? "draw" : "erase"; refreshTools(); });
+  linkBtn.addEventListener("click", () => { tool = (tool === "link") ? "draw" : "link"; refreshTools(); });
+  modeEditBtn.addEventListener("click", () => setMode("edit"));
+  modeViewBtn.addEventListener("click", () => setMode("view"));
+  backBtn.addEventListener("click", goBack);
 
-  eraseBtn.addEventListener("click", () => {
-    tool = tool === "erase" ? "draw" : "erase";
-    refreshTools();
-  });
-
-  document.getElementById("undo").addEventListener("click", () => {
-    if (strokes.length) { strokes.pop(); scheduleSave(); render(); }
-  });
-
+  document.getElementById("undo").addEventListener("click", () => { if (strokes.length) { strokes.pop(); scheduleSave(); render(); } });
   document.getElementById("clear").addEventListener("click", () => {
     if (!strokes.length) return;
-    if (window.confirm("Clear the whole page?")) {
-      strokes = [];
-      cameraY = 0;
-      pageHeight = 0; ensurePageHeight();
-      flushSave();                  // persist the cleared state right away
-      render();
+    if (window.confirm("Clear this page's writing? (Links are kept.)")) {
+      strokes.length = 0;                // mutate in place to keep the page's array reference
+      cameraY = 0; pageHeight = 0; ensurePageHeight();
+      flushSave(); render();
     }
   });
 
-  // ---------------------------------------------------------------------------
-  // Diagnostics overlay
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
+  // Diagnostics
+  // ===========================================================================
   const infoEl = document.getElementById("info");
   const diagBtn = document.getElementById("diag");
-
   function updateInfo() {
     infoEl.innerHTML =
       "input: <b>" + diag.type + "</b><br>" +
       "pressure: <b>" + diag.pressure.toFixed(2) + "</b><br>" +
-      "strokes: <b>" + strokes.length + "</b><br>" +
-      "dpr: <b>" + dpr.toFixed(2) + "</b><br>" +
-      "coalesced: <b>" + (diag.coalesced ? "yes" : "no") + "</b>";
+      "mode: <b>" + mode + "</b><br>" +
+      "strokes: <b>" + strokes.length + "</b> &nbsp; links: <b>" + links.length + "</b><br>" +
+      "pages: <b>" + Object.keys(pages).length + "</b> &nbsp; dpr: <b>" + dpr.toFixed(2) + "</b>";
   }
-
   diagBtn.addEventListener("click", () => {
-    diag.on = !diag.on;
-    infoEl.classList.toggle("on", diag.on);
+    diag.on = !diag.on; infoEl.classList.toggle("on", diag.on);
     diagBtn.setAttribute("aria-pressed", diag.on ? "true" : "false");
     if (diag.on) updateInfo();
   });
 
-  // ---------------------------------------------------------------------------
-  // Persistence (IndexedDB) — autosaves locally, restores on launch.
-  // Schema is page-shaped from the start so the linking/pages build is additive:
-  // { v, currentPageId, pages: { <id>: { strokes, pageHeight } } }
-  // For now there is a single "root" page. If IndexedDB is unavailable the app
-  // still runs fully — it just won't persist.
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
+  // Persistence (IndexedDB). Schema v2:
+  //   { v:2, currentPageId, pages: { <id>: { strokes, pageHeight, links, parentId, header } } }
+  // ===========================================================================
   const STORE = "docs", KEY = "current";
   const DB = { handle: null, ok: false };
 
   function idbOpen() {
     return new Promise((resolve) => {
       try {
-        const idb = window.indexedDB;
-        if (!idb) return resolve(null);
+        const idb = window.indexedDB; if (!idb) return resolve(null);
         const req = idb.open(CONFIG.storage.dbName, 1);
-        req.onupgradeneeded = () => {
-          if (!req.result.objectStoreNames.contains(STORE)) req.result.createObjectStore(STORE);
-        };
+        req.onupgradeneeded = () => { if (!req.result.objectStoreNames.contains(STORE)) req.result.createObjectStore(STORE); };
         req.onsuccess = () => { DB.handle = req.result; DB.ok = true; resolve(DB.handle); };
         req.onerror = () => resolve(null);
       } catch (_) { resolve(null); }
     });
   }
-
   function idbGet() {
     return new Promise((resolve) => {
       if (!DB.handle) return resolve(null);
       try {
         const rq = DB.handle.transaction(STORE, "readonly").objectStore(STORE).get(KEY);
-        rq.onsuccess = () => resolve(rq.result || null);
-        rq.onerror = () => resolve(null);
+        rq.onsuccess = () => resolve(rq.result || null); rq.onerror = () => resolve(null);
       } catch (_) { resolve(null); }
     });
   }
-
   function idbPut(val) {
     return new Promise((resolve) => {
       if (!DB.handle) return resolve(false);
       try {
         const tx = DB.handle.transaction(STORE, "readwrite");
         tx.objectStore(STORE).put(val, KEY);
-        tx.oncomplete = () => resolve(true);
-        tx.onerror = () => resolve(false);
+        tx.oncomplete = () => resolve(true); tx.onerror = () => resolve(false);
       } catch (_) { resolve(false); }
     });
   }
 
-  function serialize() {
-    return { v: 1, currentPageId: "root", pages: { root: { strokes: strokes, pageHeight: pageHeight } } };
-  }
+  function serialize() { commitCurrent(); return { v: 2, currentPageId: currentId, pages: pages }; }
 
-  function recomputeBbox(s) {
-    let mn = Infinity, mx = -Infinity;
-    for (let i = 0; i < s.pts.length; i++) {
-      const y = s.pts[i].y;
-      if (y < mn) mn = y;
-      if (y > mx) mx = y;
-    }
-    s.minY = isFinite(mn) ? mn : 0;
-    s.maxY = isFinite(mx) ? mx : 0;
+  function normalizePage(pg, id) {
+    pg.id = pg.id || id;
+    pg.parentId = pg.parentId || null;
+    pg.strokes = Array.isArray(pg.strokes) ? pg.strokes : [];
+    pg.links = Array.isArray(pg.links) ? pg.links : [];
+    pg.pageHeight = (typeof pg.pageHeight === "number" && pg.pageHeight > 0) ? pg.pageHeight : 0;
+    for (let i = 0; i < pg.strokes.length; i++) { if (!pg.strokes[i].pts) pg.strokes[i].pts = []; recomputeBbox(pg.strokes[i]); }
+    if (pg.header && Array.isArray(pg.header.strokes)) {
+      for (let i = 0; i < pg.header.strokes.length; i++) { if (!pg.header.strokes[i].pts) pg.header.strokes[i].pts = []; recomputeBbox(pg.header.strokes[i]); }
+    } else { pg.header = pg.header || null; }
   }
-
   function applyDoc(doc) {
-    if (!doc || !doc.pages) return false;
-    const pg = doc.pages[doc.currentPageId || "root"] || doc.pages.root;
-    if (!pg) return false;
-    strokes = Array.isArray(pg.strokes) ? pg.strokes : [];
-    for (let i = 0; i < strokes.length; i++) {
-      if (!strokes[i].pts) strokes[i].pts = [];
-      recomputeBbox(strokes[i]);                       // defensive: trust points, not stored bbox
-    }
-    pageHeight = (typeof pg.pageHeight === "number" && pg.pageHeight > 0) ? pg.pageHeight : 0;
-    ensurePageHeight();
-    cameraY = 0;
-    clampCamera();
+    if (!doc || !doc.pages || !doc.pages.root) return false;   // need at least a root
+    pages = doc.pages;
+    for (const id in pages) normalizePage(pages[id], id);       // also migrates v1 (adds links/parentId/header)
+    currentId = (doc.currentPageId && pages[doc.currentPageId]) ? doc.currentPageId : "root";
+    bindCurrent(); cameraY = 0; clampCamera();
     return true;
   }
 
   let saveTimer = null;
-  function scheduleSave() {
-    if (!DB.ok) return;
-    if (saveTimer) clearTimeout(saveTimer);
-    saveTimer = setTimeout(flushSave, CONFIG.storage.debounceMs);
-  }
-  function flushSave() {
-    if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
-    if (DB.ok) idbPut(serialize());
-  }
-
-  // Flush pending edits when the app is backgrounded or closed
+  function scheduleSave() { if (!DB.ok) return; if (saveTimer) clearTimeout(saveTimer); saveTimer = setTimeout(flushSave, CONFIG.storage.debounceMs); }
+  function flushSave() { if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; } if (DB.ok) idbPut(serialize()); }
   window.addEventListener("pagehide", flushSave);
-  document.addEventListener("visibilitychange", function () {
-    if (document.visibilityState === "hidden") flushSave();
-  });
+  document.addEventListener("visibilitychange", function () { if (document.visibilityState === "hidden") flushSave(); });
 
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
   // Boot
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
+  function initEmpty() { pages = { root: newPage("root", null, null) }; currentId = "root"; bindCurrent(); }
+
   window.addEventListener("resize", resize);
   window.addEventListener("orientationchange", () => setTimeout(resize, 120));
-  refreshTools();
-  resize();                           // first paint (empty)
 
-  // Restore saved work, if any, then repaint
+  initEmpty();
+  refreshTools(); updateChrome();
+  resize();
+
   idbOpen().then(function () {
     if (!DB.ok) return;
     idbGet().then(function (doc) {
-      if (doc && applyDoc(doc)) render();
+      if (doc && applyDoc(doc)) { updateChrome(); render(); }
     });
   });
 
-  // Offline install — only registers in a secure context (https or localhost)
   if ("serviceWorker" in navigator && window.isSecureContext) {
-    window.addEventListener("load", () => {
-      navigator.serviceWorker.register("./service-worker.js").catch(() => {});
-    });
+    window.addEventListener("load", () => { navigator.serviceWorker.register("./service-worker.js").catch(() => {}); });
   }
+
+  // Read-only inspection seam (handy in devtools; used by the headless tests).
+  window.__ink = {
+    page: () => currentId, pages: () => Object.keys(pages).length,
+    links: () => links.length, strokes: () => strokes.length,
+    mode: () => mode, header: () => !!headerInfo
+  };
 })();
 </script>
 </body>
