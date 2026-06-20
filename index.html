@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="apple-touch-icon" href="./icon-192.png">
+<title>Ink Prototype</title>
+<style>
+  :root {
+    /* These mirror CONFIG.colors in the script. Change both if you re-theme. */
+    --bg: #000000;
+    --cream: #F2E2C4;
+    --white: #FFFFFF;
+    --blue:  #4FA3FF;
+    --pink:  #FF77B0;
+    --ui-surface: rgba(22,22,24,0.82);
+    --ui-stroke: rgba(255,255,255,0.14);
+    --ui-text: rgba(255,255,255,0.72);
+  }
+  * { box-sizing: border-box; -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0; padding: 0; height: 100%; width: 100%;
+    background: var(--bg); overflow: hidden;
+    overscroll-behavior: none; touch-action: none;
+    font-family: -apple-system, "Segoe UI", Roboto, system-ui, sans-serif;
+  }
+  #board {
+    position: fixed; inset: 0; display: block;
+    touch-action: none; cursor: crosshair;
+  }
+
+  /* Bottom toolbar — kept quiet so the surface is the hero */
+  #bar {
+    position: fixed; left: 50%; bottom: max(14px, env(safe-area-inset-bottom));
+    transform: translateX(-50%);
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 10px;
+    background: var(--ui-surface);
+    border: 1px solid var(--ui-stroke);
+    border-radius: 16px;
+    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+    z-index: 10;
+  }
+  .swatch {
+    width: 34px; height: 34px; border-radius: 50%;
+    border: 2px solid rgba(255,255,255,0.18);
+    padding: 0; outline: none; position: relative;
+    transition: transform .08s ease;
+  }
+  .swatch:active { transform: scale(0.92); }
+  .swatch[aria-pressed="true"] {
+    border-color: rgba(255,255,255,0.95);
+    box-shadow: 0 0 0 2px rgba(0,0,0,0.6), 0 0 10px rgba(255,255,255,0.25);
+  }
+  .sep { width: 1px; height: 26px; background: var(--ui-stroke); margin: 0 2px; }
+  .tool {
+    height: 34px; min-width: 34px; padding: 0 10px;
+    display: flex; align-items: center; justify-content: center;
+    background: transparent; color: var(--ui-text);
+    border: 1px solid var(--ui-stroke); border-radius: 11px;
+    font-size: 13px; font-weight: 600; letter-spacing: .01em;
+  }
+  .tool:active { transform: scale(0.94); }
+  .tool[aria-pressed="true"] {
+    color: #fff; border-color: rgba(255,255,255,0.85);
+    background: rgba(255,255,255,0.07);
+  }
+  .tool svg { width: 18px; height: 18px; }
+
+  /* Debug readout — confirms the S Pen is seen and pressure is arriving */
+  #info {
+    position: fixed; top: max(10px, env(safe-area-inset-top)); left: 10px;
+    background: var(--ui-surface); border: 1px solid var(--ui-stroke);
+    border-radius: 10px; padding: 8px 10px; z-index: 10;
+    color: var(--ui-text); font-size: 12px; line-height: 1.5;
+    font-variant-numeric: tabular-nums; display: none; min-width: 150px;
+  }
+  #info b { color: #fff; font-weight: 600; }
+  #info.on { display: block; }
+</style>
+</head>
+<body>
+  <canvas id="board"></canvas>
+
+  <div id="info" aria-hidden="true"></div>
+
+  <div id="bar" role="toolbar" aria-label="Drawing tools">
+    <button class="swatch" data-color="cream" style="background:var(--cream)" aria-label="Header (cream)"  aria-pressed="false"></button>
+    <button class="swatch" data-color="white" style="background:var(--white)" aria-label="Script (white)" aria-pressed="false"></button>
+    <button class="swatch" data-color="blue"  style="background:var(--blue)"  aria-label="Link (blue)"   aria-pressed="false"></button>
+    <button class="swatch" data-color="pink"  style="background:var(--pink)"  aria-label="Border (pink)" aria-pressed="false"></button>
+    <span class="sep"></span>
+    <button class="tool" id="erase" aria-label="Eraser" aria-pressed="false" title="Eraser">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3 21 8 11 18H6l-3-3z"/><path d="M14 5 19 10"/></svg>
+    </button>
+    <button class="tool" id="undo" aria-label="Undo" title="Undo">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-1"/></svg>
+    </button>
+    <button class="tool" id="clear" aria-label="Clear page" title="Clear">Clear</button>
+    <button class="tool" id="diag" aria-label="Toggle diagnostics" aria-pressed="false" title="Diagnostics">i</button>
+  </div>
+
+<script>
+"use strict";
+(function () {
+  // ---------------------------------------------------------------------------
+  // CONFIG — single source of truth. Re-theme or retune here.
+  // ---------------------------------------------------------------------------
+  const CONFIG = {
+    background: "#000000",
+    colors: [
+      { id: "cream", label: "Header", value: "#F2E2C4" },
+      { id: "white", label: "Script", value: "#FFFFFF" },
+      { id: "blue",  label: "Link",   value: "#4FA3FF" },
+      { id: "pink",  label: "Border", value: "#FF77B0" }
+    ],
+    defaultColorId: "cream",          // first marks default to a header
+    pen: {
+      minWidth: 1.6,                  // px at pressure 0
+      maxWidth: 5.4,                  // px at pressure 1
+      defaultPressure: 0.5,           // used when a device reports no pressure
+      maxDpr: 3                       // cap backing-store scale to bound memory
+    },
+    eraser: { radius: 15 },           // px hit radius for stroke-erase
+    page: {
+      initialScreens: 2.5,            // starting virtual height, in screens
+      growBuffer: 700                 // headroom added below your lowest mark
+    },
+    scroll: { overscroll: 240 }       // px you can pull past the bottom to write below
+  };
+
+  // ---------------------------------------------------------------------------
+  // State
+  // ---------------------------------------------------------------------------
+  const canvas = document.getElementById("board");
+  const ctx = canvas.getContext("2d");
+
+  let dpr = 1, viewW = 0, viewH = 0;
+  let cameraY = 0;            // page-coord at top of viewport
+  let pageHeight = 0;         // current virtual page height (page coords)
+  let strokes = [];          // { color, pts:[{x,y,p}], minY, maxY }
+  let current = null;        // in-progress stroke
+
+  let color = colorById(CONFIG.defaultColorId).value;
+  let tool = "draw";         // "draw" | "erase"
+
+  let drawId = null;         // active drawing pointer id (pen/mouse)
+  let scrollId = null;       // active scrolling pointer id (one finger)
+  let lastScrollClientY = 0;
+
+  const diag = { on: false, type: "-", pressure: 0,
+    coalesced: (typeof PointerEvent !== "undefined") && ("getCoalescedEvents" in PointerEvent.prototype) };
+
+  function colorById(id) { return CONFIG.colors.find(c => c.id === id) || CONFIG.colors[0]; }
+
+  // ---------------------------------------------------------------------------
+  // Sizing (high-DPI aware)
+  // ---------------------------------------------------------------------------
+  function resize() {
+    dpr = Math.min(window.devicePixelRatio || 1, CONFIG.pen.maxDpr);
+    viewW = window.innerWidth;
+    viewH = window.innerHeight;
+    canvas.style.width = viewW + "px";
+    canvas.style.height = viewH + "px";
+    canvas.width = Math.round(viewW * dpr);
+    canvas.height = Math.round(viewH * dpr);
+    ensurePageHeight();
+    clampCamera();
+    render();
+  }
+
+  function ensurePageHeight() {
+    const min = viewH * CONFIG.page.initialScreens;
+    if (pageHeight < min) pageHeight = min;
+  }
+
+  function growPage(maxY) {
+    const want = maxY + CONFIG.page.growBuffer;
+    if (want > pageHeight) pageHeight = want;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Coordinate + width helpers
+  // ---------------------------------------------------------------------------
+  function pagePt(e) {
+    const r = canvas.getBoundingClientRect();
+    return { x: e.clientX - r.left, y: (e.clientY - r.top) + cameraY };
+  }
+
+  function widthFor(p) {
+    const pr = (p && p > 0) ? p : CONFIG.pen.defaultPressure;
+    return CONFIG.pen.minWidth + pr * (CONFIG.pen.maxWidth - CONFIG.pen.minWidth);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Rendering — one screen-sized canvas, camera over vector data
+  // ---------------------------------------------------------------------------
+  function setPageTransform() {
+    // page coords -> device px, scaled by dpr and shifted by camera
+    ctx.setTransform(dpr, 0, 0, dpr, 0, -cameraY * dpr);
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+  }
+
+  function render() {
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.fillStyle = CONFIG.background;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    setPageTransform();
+    const top = cameraY, bot = cameraY + viewH;
+    for (let i = 0; i < strokes.length; i++) {
+      const s = strokes[i];
+      if (s.maxY < top || s.minY > bot) continue;   // cull off-screen
+      drawStroke(s, 1);
+    }
+    if (current) drawStroke(current, 1);
+
+    drawScrollbar();
+    if (diag.on) updateInfo();
+  }
+
+  // Draw a stroke from segment index `from` onward (1 = whole stroke).
+  function drawStroke(s, from) {
+    const pts = s.pts;
+    if (!pts.length) return;
+    ctx.strokeStyle = s.color;
+    if (pts.length === 1) {
+      const w = widthFor(pts[0].p);
+      ctx.fillStyle = s.color;
+      ctx.beginPath();
+      ctx.arc(pts[0].x, pts[0].y, w / 2, 0, Math.PI * 2);
+      ctx.fill();
+      return;
+    }
+    const start = Math.max(1, from);
+    for (let i = start; i < pts.length; i++) {
+      const a = pts[i - 1], b = pts[i];
+      ctx.lineWidth = widthFor((a.p + b.p) / 2);
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.stroke();
+    }
+  }
+
+  function drawScrollbar() {
+    if (pageHeight <= viewH) return;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    const total = Math.max(pageHeight, viewH);
+    const trackH = canvas.height;
+    const thumbH = Math.max(34 * dpr, (viewH / total) * trackH);
+    const thumbY = (cameraY / total) * trackH;
+    const x = canvas.width - 6 * dpr;
+    const w = 4 * dpr, r = 2 * dpr;
+    ctx.fillStyle = "rgba(255,255,255,0.16)";
+    roundRect(x, Math.min(thumbY, trackH - thumbH), w, thumbH, r);
+    ctx.fill();
+  }
+
+  function roundRect(x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Camera / scrolling (one finger, vertical only)
+  // ---------------------------------------------------------------------------
+  function clampCamera() {
+    const maxY = Math.max(0, pageHeight - viewH) + CONFIG.scroll.overscroll;
+    if (cameraY < 0) cameraY = 0;
+    if (cameraY > maxY) cameraY = maxY;
+  }
+
+  function scrollBy(dy) {
+    cameraY -= dy;
+    clampCamera();
+    render();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Drawing / erasing
+  // ---------------------------------------------------------------------------
+  function startDraw(e) {
+    canvas.setPointerCapture(e.pointerId);
+    drawId = e.pointerId;
+    diag.type = e.pointerType; diag.pressure = e.pressure;
+    if (tool === "erase") { current = null; eraseAt(pagePt(e)); return; }
+    const p = pagePt(e);
+    current = { color: color, pts: [{ x: p.x, y: p.y, p: e.pressure }], minY: p.y, maxY: p.y };
+    if (diag.on) updateInfo();
+  }
+
+  function extendDraw(e) {
+    const list = (e.getCoalescedEvents && e.getCoalescedEvents()) || [];
+    const evs = list.length ? list : [e];
+    diag.type = e.pointerType; diag.pressure = e.pressure;
+
+    if (tool === "erase") {
+      for (let i = 0; i < evs.length; i++) eraseAt(pagePt(evs[i]));
+      if (diag.on) updateInfo();
+      return;
+    }
+    if (!current) return;
+
+    const from = current.pts.length - 1;   // first new segment starts here
+    for (let i = 0; i < evs.length; i++) {
+      const p = pagePt(evs[i]);
+      current.pts.push({ x: p.x, y: p.y, p: evs[i].pressure });
+      if (p.y < current.minY) current.minY = p.y;
+      if (p.y > current.maxY) current.maxY = p.y;
+    }
+    // incremental: draw only the newly added tail on top of existing pixels
+    setPageTransform();
+    drawStroke(current, Math.max(1, from));
+    if (diag.on) updateInfo();
+  }
+
+  function endDraw(e) {
+    try { canvas.releasePointerCapture(e.pointerId); } catch (_) {}
+    drawId = null;
+    if (tool === "draw" && current && current.pts.length) {
+      strokes.push(current);
+      growPage(current.maxY);
+    }
+    current = null;
+    render();
+  }
+
+  function eraseAt(p) {
+    const r = CONFIG.eraser.radius;
+    let removed = false;
+    for (let i = strokes.length - 1; i >= 0; i--) {
+      if (strokeHit(strokes[i], p.x, p.y, r)) { strokes.splice(i, 1); removed = true; }
+    }
+    if (removed) render();
+  }
+
+  function strokeHit(s, x, y, r) {
+    if (y < s.minY - r || y > s.maxY + r) return false;   // quick vertical reject
+    const pts = s.pts;
+    const r2 = r * r;
+    for (let i = 0; i < pts.length; i++) {
+      const dx = pts[i].x - x, dy = pts[i].y - y;
+      if (dx * dx + dy * dy <= r2) return true;
+    }
+    return false;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Pointer routing: pen/mouse draw, one finger scrolls
+  // ---------------------------------------------------------------------------
+  canvas.addEventListener("pointerdown", function (e) {
+    if (e.pointerType === "touch") {
+      if (scrollId !== null) return;            // ignore extra fingers
+      scrollId = e.pointerId;
+      lastScrollClientY = e.clientY;
+      canvas.setPointerCapture(e.pointerId);
+      return;
+    }
+    if (drawId !== null) return;                 // already drawing
+    startDraw(e);
+  });
+
+  canvas.addEventListener("pointermove", function (e) {
+    if (e.pointerId === scrollId) {
+      const dy = e.clientY - lastScrollClientY;
+      lastScrollClientY = e.clientY;
+      scrollBy(dy);
+      return;
+    }
+    if (e.pointerId === drawId) extendDraw(e);
+  });
+
+  function pointerEnd(e) {
+    if (e.pointerId === scrollId) {
+      try { canvas.releasePointerCapture(e.pointerId); } catch (_) {}
+      scrollId = null;
+      return;
+    }
+    if (e.pointerId === drawId) endDraw(e);
+  }
+  canvas.addEventListener("pointerup", pointerEnd);
+  canvas.addEventListener("pointercancel", pointerEnd);
+
+  // Block stray browser gestures
+  canvas.addEventListener("contextmenu", e => e.preventDefault());
+  window.addEventListener("gesturestart", e => e.preventDefault());
+  document.addEventListener("dblclick", e => e.preventDefault(), { passive: false });
+
+  // ---------------------------------------------------------------------------
+  // Toolbar
+  // ---------------------------------------------------------------------------
+  const swatches = Array.from(document.querySelectorAll(".swatch"));
+  const eraseBtn = document.getElementById("erase");
+
+  function refreshTools() {
+    swatches.forEach(b => {
+      const isActive = tool === "draw" && colorById(b.dataset.color).value === color;
+      b.setAttribute("aria-pressed", isActive ? "true" : "false");
+    });
+    eraseBtn.setAttribute("aria-pressed", tool === "erase" ? "true" : "false");
+  }
+
+  swatches.forEach(b => b.addEventListener("click", () => {
+    color = colorById(b.dataset.color).value;
+    tool = "draw";
+    refreshTools();
+  }));
+
+  eraseBtn.addEventListener("click", () => {
+    tool = tool === "erase" ? "draw" : "erase";
+    refreshTools();
+  });
+
+  document.getElementById("undo").addEventListener("click", () => {
+    if (strokes.length) { strokes.pop(); render(); }
+  });
+
+  document.getElementById("clear").addEventListener("click", () => {
+    if (!strokes.length) return;
+    if (window.confirm("Clear the whole page?")) {
+      strokes = [];
+      cameraY = 0;
+      pageHeight = 0; ensurePageHeight();
+      render();
+    }
+  });
+
+  // ---------------------------------------------------------------------------
+  // Diagnostics overlay
+  // ---------------------------------------------------------------------------
+  const infoEl = document.getElementById("info");
+  const diagBtn = document.getElementById("diag");
+
+  function updateInfo() {
+    infoEl.innerHTML =
+      "input: <b>" + diag.type + "</b><br>" +
+      "pressure: <b>" + diag.pressure.toFixed(2) + "</b><br>" +
+      "strokes: <b>" + strokes.length + "</b><br>" +
+      "dpr: <b>" + dpr.toFixed(2) + "</b><br>" +
+      "coalesced: <b>" + (diag.coalesced ? "yes" : "no") + "</b>";
+  }
+
+  diagBtn.addEventListener("click", () => {
+    diag.on = !diag.on;
+    infoEl.classList.toggle("on", diag.on);
+    diagBtn.setAttribute("aria-pressed", diag.on ? "true" : "false");
+    if (diag.on) updateInfo();
+  });
+
+  // ---------------------------------------------------------------------------
+  // Boot
+  // ---------------------------------------------------------------------------
+  window.addEventListener("resize", resize);
+  window.addEventListener("orientationchange", () => setTimeout(resize, 120));
+  refreshTools();
+  resize();
+
+  // Offline install — only registers in a secure context (https or localhost)
+  if ("serviceWorker" in navigator && window.isSecureContext) {
+    window.addEventListener("load", () => {
+      navigator.serviceWorker.register("./service-worker.js").catch(() => {});
+    });
+  }
+})();
+</script>
+</body>
+</html>
