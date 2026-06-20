@@ -12,7 +12,8 @@ function recordingEl(extra) {
   return Object.assign({
     _handlers: h,
     addEventListener(t, fn) { (h[t] = h[t] || []).push(fn); },
-    fire(t, ev) { (h[t] || []).forEach(fn => fn(ev || {})); },
+    removeEventListener(t, fn) { const a = h[t]; if (a) { const i = a.indexOf(fn); if (i >= 0) a.splice(i, 1); } },
+    fire(t, ev) { (h[t] || []).slice().forEach(fn => fn(ev || {})); },
     setAttribute() {}, getAttribute() { return null; },
     classList: { toggle() {}, add() {}, remove() {} }, style: {}
   }, extra || {});
@@ -49,7 +50,7 @@ function makeInstance() {
   };
   const doc = {
     visibilityState: "visible",
-    getElementById: id => els[id],
+    getElementById: id => (els[id] || (els[id] = recordingEl())),
     querySelectorAll: sel => (sel === ".swatch" ? swatches : []),
     _h: {}, addEventListener(t, fn) { (doc._h[t] = doc._h[t] || []).push(fn); },
     fire(t, ev) { (doc._h[t] || []).forEach(fn => fn(ev || {})); }

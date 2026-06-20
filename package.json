@@ -1,0 +1,20 @@
+{
+  "name": "ink",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Stylus planning tool — PWA + Capacitor APK wrapper.",
+  "scripts": {
+    "test": "node test_app.js && node test_links.js && node test_persistence.js && node test_graph_persist.js",
+    "www": "rm -rf www && mkdir www && cp index.html manifest.webmanifest service-worker.js icon-192.png icon-512.png icon-512-maskable.png www/",
+    "sync": "cap sync android",
+    "open": "cap open android"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.0.0",
+    "@capacitor/core": "^8.0.0"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.0.0",
+    "fake-indexeddb": "^6.2.5"
+  }
+}

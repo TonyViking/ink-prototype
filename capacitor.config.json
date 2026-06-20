@@ -1,0 +1,8 @@
+{
+  "appId": "com.tonyviking.ink",
+  "appName": "Ink",
+  "webDir": "www",
+  "android": {
+    "backgroundColor": "#000000"
+  }
+}

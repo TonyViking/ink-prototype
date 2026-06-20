@@ -87,6 +87,27 @@
   }
   #info b { color: #fff; font-weight: 600; }
   #info.on { display: block; }
+
+  /* Confirmation modal */
+  #modal {
+    position: fixed; inset: 0; z-index: 50;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(0,0,0,0.62); padding: 24px;
+  }
+  #modal[hidden] { display: none; }
+  .modal-card {
+    width: 100%; max-width: 330px; background: #161618;
+    border: 1px solid var(--ui-stroke); border-radius: 16px; padding: 20px;
+    color: #fff; box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+  }
+  .modal-card p { margin: 0 0 18px; font-size: 15px; line-height: 1.5; color: rgba(255,255,255,0.9); }
+  .modal-btns { display: flex; gap: 10px; justify-content: flex-end; }
+  .mbtn {
+    height: 40px; padding: 0 18px; border-radius: 11px; font-size: 14px; font-weight: 600;
+    border: 1px solid var(--ui-stroke); background: transparent; color: var(--ui-text);
+  }
+  .mbtn.danger { border-color: rgba(255,90,90,0.7); background: rgba(255,70,70,0.16); color: #ff8a8a; }
+  .mbtn:active { transform: scale(0.96); }
 </style>
 </head>
 <body>
@@ -118,6 +139,16 @@
       <button class="segbtn" id="modeView" aria-pressed="false">View</button>
     </span>
     <button class="tool" id="diag" aria-label="Diagnostics" aria-pressed="false" title="Diagnostics">i</button>
+  </div>
+
+  <div id="modal" hidden role="dialog" aria-modal="true">
+    <div class="modal-card">
+      <p id="modalMsg"></p>
+      <div class="modal-btns">
+        <button class="mbtn" id="modalNo">No</button>
+        <button class="mbtn danger" id="modalYes">Yes</button>
+      </div>
+    </div>
   </div>
 
 <script>
@@ -287,11 +318,35 @@
     }
     return null;
   }
-  function removeLink(lk) {
+  // Gather a page and every page reachable beneath it (its links' targets, deep).
+  function collectSubtree(pageId, acc) {
+    if (!pages[pageId] || acc.has(pageId)) return;
+    acc.add(pageId);
+    const lk = pages[pageId].links || [];
+    for (let i = 0; i < lk.length; i++) collectSubtree(lk[i].targetId, acc);
+  }
+
+  function requestRemoveLink(lk) {
+    const doomed = new Set();
+    collectSubtree(lk.targetId, doomed);          // the child + everything under it
+    const n = doomed.size;
+    const first = (n <= 1)
+      ? "Delete this link and its page?"
+      : "Deleting this link will delete its page and all " + (n - 1) + " page(s) beneath it (" + n + " total).";
+    confirmModal(first, "Delete").then(function (ok1) {
+      if (!ok1) return;
+      confirmModal("Are you sure? This can't be undone.", "Yes, delete").then(function (ok2) {
+        if (!ok2) return;
+        doDeleteLink(lk, doomed);
+      });
+    });
+  }
+
+  function doDeleteLink(lk, doomed) {
     const i = links.indexOf(lk);
-    if (i >= 0) { links.splice(i, 1); scheduleSave(); render(); }
-    // Note: the child page data is left in place (unreachable). Cascade-delete is
-    // deliberately out of scope for this build.
+    if (i >= 0) links.splice(i, 1);
+    doomed.forEach(function (id) { if (id !== "root") delete pages[id]; });
+    commitCurrent(); scheduleSave(); render();
   }
 
   // ===========================================================================
@@ -448,7 +503,7 @@
       if (linkDrag) {
         const r = normRect(linkDrag);
         if (r.w >= CONFIG.link.minSize && r.h >= CONFIG.link.minSize) createLink(r);
-        else { const hit = linkAt({ x: linkDrag.x1, y: linkDrag.y1 }); if (hit) removeLink(hit); }
+        else { const hit = linkAt({ x: linkDrag.x1, y: linkDrag.y1 }); if (hit) requestRemoveLink(hit); }
         linkDrag = null;
       }
       render(); return;
@@ -540,6 +595,28 @@
   const editToolsEl = document.getElementById("editTools");
   const modeEditBtn = document.getElementById("modeEdit");
   const modeViewBtn = document.getElementById("modeView");
+
+  const modalEl = document.getElementById("modal");
+  const modalMsg = document.getElementById("modalMsg");
+  const modalYes = document.getElementById("modalYes");
+  const modalNo = document.getElementById("modalNo");
+  function confirmModal(message, yesLabel) {
+    return new Promise(function (resolve) {
+      modalMsg.textContent = message;
+      modalYes.textContent = yesLabel || "Yes";
+      modalEl.hidden = false;
+      function done(v) {
+        modalEl.hidden = true;
+        modalYes.removeEventListener("click", onYes);
+        modalNo.removeEventListener("click", onNo);
+        resolve(v);
+      }
+      function onYes() { done(true); }
+      function onNo() { done(false); }
+      modalYes.addEventListener("click", onYes);
+      modalNo.addEventListener("click", onNo);
+    });
+  }
 
   function refreshTools() {
     swatches.forEach(b => b.setAttribute("aria-pressed",

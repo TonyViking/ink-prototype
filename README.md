@@ -1,8 +1,7 @@
 # Ink Prototype
 
-A feel-test for the stylus planning tool — **not** the full app. It exists to
-answer one question before we build the rest: does writing on a web canvas with
-your S Pen feel good enough on the tablet?
+A stylus planning tool — write with the pen, box a section to give it its own
+page, and dig deeper from there. Built as an installable PWA for the tablet.
 
 What it does:
 
@@ -10,13 +9,35 @@ What it does:
 - Four pens — cream (header), white (script), blue (link), pink (border)
 - Pressure-sensitive line width
 - Stroke eraser (removes whole strokes you touch), undo, clear
-- Autosaves locally and restores your page on relaunch (IndexedDB)
+- **Edit / View modes** (toggle, bottom-right of the toolbar)
+- **Linking** — in Edit, pick the Link tool and drag a box around some writing.
+  That spawns a child page and pulls the boxed writing in as its header. In
+  View, tap a box to open its page. Back button (top-left) returns you up a level.
+- **Deleting a link** — with the Link tool, tap an existing box. A two-step
+  confirm warns you it will delete that page and everything beneath it, then
+  cascade-deletes the whole subtree.
+- Pages nest as deep as you like; each box opens its own page
+- Autosaves locally and restores the whole page graph on relaunch (IndexedDB)
 - Long scrolling page (vector strokes, camera over the data — no giant bitmap)
-- Diagnostics toggle (`i`) shows input type, pressure, stroke count, DPR — use it
-  to confirm the S Pen is detected as `pen` and pressure is actually arriving
+- Diagnostics toggle (`i`) shows input type, pressure, mode, and stroke/link/page
+  counts — use it to confirm the S Pen is seen as `pen` with live pressure
 
-What it deliberately does **not** do yet: linking, sub-pages, pulled headers.
-Saving is now in. That's the next build once the ink feels right.
+How the tools sit:
+
+- **Edit** holds the four pens, eraser, **Link**, undo, clear.
+  - Link tool: *drag a box* to create a link; *tap an existing box* to delete it
+    (with a two-step confirm that cascade-deletes the page and its sub-pages).
+- **View** hides the pens. Pen or finger both scroll on a drag; a tap opens a
+  link. Links stay inert while you're editing, so you can't trip one by accident.
+
+Still to come (refinements, not blockers): pinned/sticky headers, renaming
+pages, and export.
+
+## Standalone app (APK)
+
+The PWA installs as a launchable app already. For a fully standalone package with
+no hosted-page dependency, `BUILD-APK.md` walks through wrapping it with Capacitor
+into an installable APK — the web files get bundled inside, so it runs offline.
 
 ---
 
@@ -55,21 +76,29 @@ service worker won't register off file://.
 
 Everything lives in the `CONFIG` block at the top of the `<script>` in
 `index.html` — colours, pen min/max width, default pressure, eraser radius,
-page growth, overscroll. The four CSS `--vars` in the `<style>` mirror the
-swatch colours; change both if you re-theme.
+page growth, overscroll, and the `link` block (box min size, header margins,
+divider colour, view/edit link styling). The four CSS `--vars` in the `<style>`
+mirror the swatch colours; change both if you re-theme.
 
 ## Dev files (optional, not needed on the tablet)
 
 - `make_icons.py` — regenerates the icons (needs `pillow`). Edit the palette /
   stroke and re-run if you want a different mark.
-- `test_app.js` — a headless behaviour check that loads the real app with
-  stubbed browser globals and fires synthetic pen/touch events. Run with
-  `node test_app.js`. 13 checks: draw/commit, pressure→width, scroll direction,
-  eraser removal, undo, clear, colour switch.
-- `test_persistence.js` — runs the real app twice against one in-memory
-  IndexedDB: draw + background, then relaunch and confirm the strokes restore
-  (and that a cleared page stays cleared). Needs `npm i fake-indexeddb` first,
-  then `node test_persistence.js`.
+- `test_app.js` — headless behaviour check (real app + stubbed globals + synthetic
+  pen/touch events). `node test_app.js`. 13 checks: draw/commit, pressure→width,
+  scroll direction, eraser removal, undo, clear, colour switch.
+- `test_links.js` — pages + linking + cascade delete: create a link box, navigate
+  in (View), confirm the pulled header carries the captured ink, Back returns to
+  root, the two-step confirm cancels on No, and Yes/Yes cascade-deletes a subtree
+  (incl. a 3-level root->A->B case). `node test_links.js`. 16 checks.
+- `test_persistence.js` — runs the app twice against one in-memory IndexedDB:
+  draw + background, relaunch and confirm strokes restore (and a cleared page
+  stays cleared). 3 checks.
+- `test_graph_persist.js` — same idea for the page graph: build a link, relaunch,
+  confirm 2 pages + 1 link restored and the child is still navigable with its
+  header. 5 checks.
+
+The IndexedDB tests need `npm i fake-indexeddb` first, then `node <file>`.
 
 ## Storage note
 

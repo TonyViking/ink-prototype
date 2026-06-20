@@ -10,7 +10,8 @@ function recordingEl(extra) {
   return Object.assign({
     _handlers: h,
     addEventListener(t, fn) { (h[t] = h[t] || []).push(fn); },
-    fire(t, ev) { (h[t] || []).forEach(fn => fn(ev || {})); },
+    removeEventListener(t, fn) { const a = h[t]; if (a) { const i = a.indexOf(fn); if (i >= 0) a.splice(i, 1); } },
+    fire(t, ev) { (h[t] || []).slice().forEach(fn => fn(ev || {})); },
     setAttribute() {}, getAttribute() { return null; },
     classList: { toggle() {}, add() {}, remove() {} }, style: {}
   }, extra || {});
@@ -40,7 +41,7 @@ const els = { board: canvas, info: recordingEl(), erase: recordingEl(), link: re
 
 const win = { devicePixelRatio: 2, innerWidth: 800, innerHeight: 1200, isSecureContext: false,
   confirm: () => true, addEventListener() {} };
-const doc = { visibilityState: "visible", getElementById: id => els[id],
+const doc = { visibilityState: "visible", getElementById: id => (els[id] || (els[id] = recordingEl())),
   querySelectorAll: sel => (sel === ".swatch" ? swatches : []), addEventListener() {} };
 class PE {} PE.prototype.getCoalescedEvents = function () { return []; };
 
@@ -86,14 +87,64 @@ els.back.fire("click");
 check("back: returned to root", ink.page() === "root");
 check("back: root has no header", ink.header() === false);
 
-// 5) link removal: edit mode, deterministically select the link tool, then
-//    tap (no drag) on the existing box to remove it.
-els.modeEdit.fire("click");
-swatches[0].fire("click");                       // known state: tool = draw
-els.link.fire("click");                          // tool = link
-fire("pointerdown", pen(4, 230, 330, 0.5));
-fire("pointerup", pen(4, 230, 330, 0.5));        // tap on the box -> remove link
-check("remove: link tapped away", ink.links() === 0);
+// 5) link removal now needs a two-step confirm. No cancels; Yes/Yes cascade-deletes.
+const tick = () => new Promise(r => setTimeout(r, 0));
+(async () => {
+  els.modeEdit.fire("click");
+  swatches[0].fire("click");                       // known state: tool = draw
+  els.link.fire("click");                          // tool = link
 
-console.log("\n" + pass + " passed, " + fail + " failed");
-process.exit(fail ? 1 : 0);
+  // open the confirm, then cancel on the first stage
+  fire("pointerdown", pen(4, 230, 330, 0.5));
+  fire("pointerup", pen(4, 230, 330, 0.5));        // tap the box -> stage-1 prompt
+  await tick();
+  els.modalNo.fire("click");
+  await tick();
+  check("remove: No cancels (link + child kept)", ink.links() === 1 && ink.pages() === 2);
+
+  // open again, confirm both stages -> link gone, child page cascade-deleted
+  fire("pointerdown", pen(5, 230, 330, 0.5));
+  fire("pointerup", pen(5, 230, 330, 0.5));
+  await tick();
+  els.modalYes.fire("click");                      // stage 1
+  await tick();
+  els.modalYes.fire("click");                      // stage 2
+  await tick();
+  check("remove: link deleted", ink.links() === 0);
+  check("remove: child page cascade-deleted", ink.pages() === 1);
+
+  // 6) deep cascade: build root -> A -> B, then delete root's link to A.
+  //    Both A and B must go (pages back to just root).
+  swatches[0].fire("click");                                   // draw
+  fire("pointerdown", pen(6, 210, 310, 0.6));
+  fire("pointermove", pen(6, 240, 340, 0.6, [pen(6, 240, 340, 0.6)]));
+  fire("pointerup", pen(6, 240, 340, 0.6));
+  els.link.fire("click");                                      // link
+  fire("pointerdown", pen(7, 190, 290, 0.5));
+  fire("pointermove", pen(7, 270, 370, 0.5, [pen(7, 270, 370, 0.5)]));
+  fire("pointerup", pen(7, 270, 370, 0.5));                    // root -> A
+
+  els.modeView.fire("click");
+  fire("pointerdown", pen(8, 230, 330, 0.5)); fire("pointerup", pen(8, 230, 330, 0.5)); // into A
+
+  els.modeEdit.fire("click"); swatches[0].fire("click");
+  fire("pointerdown", pen(9, 210, 310, 0.6));
+  fire("pointermove", pen(9, 240, 340, 0.6, [pen(9, 240, 340, 0.6)]));
+  fire("pointerup", pen(9, 240, 340, 0.6));
+  els.link.fire("click");
+  fire("pointerdown", pen(10, 190, 290, 0.5));
+  fire("pointermove", pen(10, 270, 370, 0.5, [pen(10, 270, 370, 0.5)]));
+  fire("pointerup", pen(10, 270, 370, 0.5));                   // A -> B
+  check("deep: three pages exist (root, A, B)", ink.pages() === 3);
+
+  els.back.fire("click");                                      // back to root
+  swatches[0].fire("click"); els.link.fire("click");          // known: tool = link
+  fire("pointerdown", pen(11, 230, 330, 0.5)); fire("pointerup", pen(11, 230, 330, 0.5)); // tap root's box
+  await tick(); els.modalYes.fire("click");
+  await tick(); els.modalYes.fire("click");
+  await tick();
+  check("deep: whole subtree cascade-deleted (root only)", ink.pages() === 1 && ink.links() === 0);
+
+  console.log("\n" + pass + " passed, " + fail + " failed");
+  process.exit(fail ? 1 : 0);
+})();

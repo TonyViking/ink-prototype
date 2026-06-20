@@ -39,10 +39,11 @@ function fakeEl(extra) {
   return Object.assign({
     _handlers: handlers,
     addEventListener(type, fn) { (handlers[type] = handlers[type] || []).push(fn); },
+    removeEventListener(type, fn) { const a = handlers[type]; if (a) { const i = a.indexOf(fn); if (i >= 0) a.splice(i, 1); } },
     setAttribute() {}, getAttribute() { return null; },
     classList: { toggle() {}, add() {}, remove() {} },
     style: {},
-    fire(type, ev) { (handlers[type] || []).forEach(fn => fn(ev || {})); }
+    fire(type, ev) { (handlers[type] || []).slice().forEach(fn => fn(ev || {})); }
   }, extra || {});
 }
 
@@ -73,7 +74,7 @@ const els = {
 };
 
 const documentStub = {
-  getElementById: id => els[id],
+  getElementById: id => (els[id] || (els[id] = fakeEl())),
   querySelectorAll: sel => (sel === ".swatch" ? swatches : []),
   addEventListener() {}
 };
