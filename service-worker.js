@@ -1,6 +1,6 @@
 /* Ink Prototype — minimal offline cache.
    Bump CACHE when you change any shell file so the SW re-fetches it. */
-const CACHE = "ink-proto-v1";
+const CACHE = "ink-proto-v2";
 const SHELL = [
   "./",
   "./index.html",

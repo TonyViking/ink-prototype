@@ -131,7 +131,8 @@
       initialScreens: 2.5,            // starting virtual height, in screens
       growBuffer: 700                 // headroom added below your lowest mark
     },
-    scroll: { overscroll: 240 }       // px you can pull past the bottom to write below
+    scroll: { overscroll: 240 },      // px you can pull past the bottom to write below
+    storage: { dbName: "inkpad", debounceMs: 600 }  // IndexedDB autosave
   };
 
   // ---------------------------------------------------------------------------
@@ -332,6 +333,7 @@
     if (tool === "draw" && current && current.pts.length) {
       strokes.push(current);
       growPage(current.maxY);
+      scheduleSave();
     }
     current = null;
     render();
@@ -343,7 +345,7 @@
     for (let i = strokes.length - 1; i >= 0; i--) {
       if (strokeHit(strokes[i], p.x, p.y, r)) { strokes.splice(i, 1); removed = true; }
     }
-    if (removed) render();
+    if (removed) { scheduleSave(); render(); }
   }
 
   function strokeHit(s, x, y, r) {
@@ -424,7 +426,7 @@
   });
 
   document.getElementById("undo").addEventListener("click", () => {
-    if (strokes.length) { strokes.pop(); render(); }
+    if (strokes.length) { strokes.pop(); scheduleSave(); render(); }
   });
 
   document.getElementById("clear").addEventListener("click", () => {
@@ -433,6 +435,7 @@
       strokes = [];
       cameraY = 0;
       pageHeight = 0; ensurePageHeight();
+      flushSave();                  // persist the cleared state right away
       render();
     }
   });
@@ -460,12 +463,116 @@
   });
 
   // ---------------------------------------------------------------------------
+  // Persistence (IndexedDB) — autosaves locally, restores on launch.
+  // Schema is page-shaped from the start so the linking/pages build is additive:
+  // { v, currentPageId, pages: { <id>: { strokes, pageHeight } } }
+  // For now there is a single "root" page. If IndexedDB is unavailable the app
+  // still runs fully — it just won't persist.
+  // ---------------------------------------------------------------------------
+  const STORE = "docs", KEY = "current";
+  const DB = { handle: null, ok: false };
+
+  function idbOpen() {
+    return new Promise((resolve) => {
+      try {
+        const idb = window.indexedDB;
+        if (!idb) return resolve(null);
+        const req = idb.open(CONFIG.storage.dbName, 1);
+        req.onupgradeneeded = () => {
+          if (!req.result.objectStoreNames.contains(STORE)) req.result.createObjectStore(STORE);
+        };
+        req.onsuccess = () => { DB.handle = req.result; DB.ok = true; resolve(DB.handle); };
+        req.onerror = () => resolve(null);
+      } catch (_) { resolve(null); }
+    });
+  }
+
+  function idbGet() {
+    return new Promise((resolve) => {
+      if (!DB.handle) return resolve(null);
+      try {
+        const rq = DB.handle.transaction(STORE, "readonly").objectStore(STORE).get(KEY);
+        rq.onsuccess = () => resolve(rq.result || null);
+        rq.onerror = () => resolve(null);
+      } catch (_) { resolve(null); }
+    });
+  }
+
+  function idbPut(val) {
+    return new Promise((resolve) => {
+      if (!DB.handle) return resolve(false);
+      try {
+        const tx = DB.handle.transaction(STORE, "readwrite");
+        tx.objectStore(STORE).put(val, KEY);
+        tx.oncomplete = () => resolve(true);
+        tx.onerror = () => resolve(false);
+      } catch (_) { resolve(false); }
+    });
+  }
+
+  function serialize() {
+    return { v: 1, currentPageId: "root", pages: { root: { strokes: strokes, pageHeight: pageHeight } } };
+  }
+
+  function recomputeBbox(s) {
+    let mn = Infinity, mx = -Infinity;
+    for (let i = 0; i < s.pts.length; i++) {
+      const y = s.pts[i].y;
+      if (y < mn) mn = y;
+      if (y > mx) mx = y;
+    }
+    s.minY = isFinite(mn) ? mn : 0;
+    s.maxY = isFinite(mx) ? mx : 0;
+  }
+
+  function applyDoc(doc) {
+    if (!doc || !doc.pages) return false;
+    const pg = doc.pages[doc.currentPageId || "root"] || doc.pages.root;
+    if (!pg) return false;
+    strokes = Array.isArray(pg.strokes) ? pg.strokes : [];
+    for (let i = 0; i < strokes.length; i++) {
+      if (!strokes[i].pts) strokes[i].pts = [];
+      recomputeBbox(strokes[i]);                       // defensive: trust points, not stored bbox
+    }
+    pageHeight = (typeof pg.pageHeight === "number" && pg.pageHeight > 0) ? pg.pageHeight : 0;
+    ensurePageHeight();
+    cameraY = 0;
+    clampCamera();
+    return true;
+  }
+
+  let saveTimer = null;
+  function scheduleSave() {
+    if (!DB.ok) return;
+    if (saveTimer) clearTimeout(saveTimer);
+    saveTimer = setTimeout(flushSave, CONFIG.storage.debounceMs);
+  }
+  function flushSave() {
+    if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
+    if (DB.ok) idbPut(serialize());
+  }
+
+  // Flush pending edits when the app is backgrounded or closed
+  window.addEventListener("pagehide", flushSave);
+  document.addEventListener("visibilitychange", function () {
+    if (document.visibilityState === "hidden") flushSave();
+  });
+
+  // ---------------------------------------------------------------------------
   // Boot
   // ---------------------------------------------------------------------------
   window.addEventListener("resize", resize);
   window.addEventListener("orientationchange", () => setTimeout(resize, 120));
   refreshTools();
-  resize();
+  resize();                           // first paint (empty)
+
+  // Restore saved work, if any, then repaint
+  idbOpen().then(function () {
+    if (!DB.ok) return;
+    idbGet().then(function (doc) {
+      if (doc && applyDoc(doc)) render();
+    });
+  });
 
   // Offline install — only registers in a secure context (https or localhost)
   if ("serviceWorker" in navigator && window.isSecureContext) {
